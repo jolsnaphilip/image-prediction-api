@@ -1,47 +1,34 @@
-from fastapi import FastAPI, UploadFile, File
+import torch
+import torchvision.transforms as transforms
+from torchvision.models import mobilenet_v2, MobileNet_V2_Weights
 from PIL import Image
-import numpy as np
-import tensorflow as tf
-from tensorflow.keras.applications.mobilenet_v2 import (
-    MobileNetV2,
-    preprocess_input,
-    decode_predictions,
+import gradio as gr
+
+# Load model
+weights = MobileNet_V2_Weights.DEFAULT
+model = mobilenet_v2(weights=weights)
+model.eval()
+
+# Transform
+preprocess = weights.transforms()
+
+# Prediction function
+def predict(image):
+    image = preprocess(image).unsqueeze(0)
+
+    with torch.no_grad():
+        outputs = model(image)
+        predicted = outputs.argmax(1).item()
+
+    label = weights.meta["categories"][predicted]
+    return label
+
+# UI
+demo = gr.Interface(
+    fn=predict,
+    inputs=gr.Image(type="pil"),
+    outputs="text",
+    title="Image Prediction API"
 )
 
-app = FastAPI(title="Image Prediction API")
-
-# Load the pre-trained model once when the app starts
-model = MobileNetV2(weights="imagenet")
-
-
-@app.get("/")
-def home():
-    return {"message": "Image Prediction API is running!"}
-
-
-@app.post("/predict")
-async def predict(file: UploadFile = File(...)):
-    # Open uploaded image
-    image = Image.open(file.file).convert("RGB")
-
-    # Resize image for the model
-    image = image.resize((224, 224))
-
-    # Convert image to array
-    image_array = np.array(image)
-
-    # Add batch dimension
-    image_array = np.expand_dims(image_array, axis=0)
-
-    # Preprocess for MobileNetV2
-    image_array = preprocess_input(image_array)
-
-    # Predict
-    prediction = model.predict(image_array)
-
-    # Decode prediction
-    label = decode_predictions(prediction, top=1)[0][0][1]
-
-    return {
-        "prediction": label
-    }
+demo.launch()
